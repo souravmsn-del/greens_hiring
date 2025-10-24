@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    body{font-family:'Inter',sans-serif;background:#f8fafc}
+    .sidebar-link{display:block;width:100%;text-align:left;padding:.6rem 1rem;border-radius:.5rem;color:#374151}
+    .sidebar-link:hover{background:#f1f5f9}
+    .sidebar-link.active{background:#16a34a;color:#fff}
+    .card{border-radius:.75rem;box-shadow:0 6px 20px rgba(0,0,0,.08);color:#fff;padding:1rem}
+    .lock-badge{font-size:.7rem;padding:.25rem .5rem;border-radius:.5rem;background:#f3f4f6;color:#6b7280}
+  </style>
+</head>
+<body class="min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-white border-r hidden md:flex flex-col">
+    <div class="px-6 py-5 border-b">
+      <div class="text-2xl font-extrabold text-gray-800">Admin <span class="text-green-600">Panel</span></div>
+      <div class="text-xs text-gray-500 mt-1">Hiring Dashboard</div>
+    </div>
+    <nav id="sidebar" class="flex-1 p-4 space-y-2">
+      <button class="sidebar-link active" data-tab="dashboard">📊 Dashboard</button>
+      <button class="sidebar-link" data-tab="jobs">🧾 Job Management</button>
+      <button class="sidebar-link" data-tab="candidates">👥 Candidates</button>
+      <button class="sidebar-link" data-tab="settings">🔐 Change Password</button>
+    </nav>
+    <div class="p-4 border-t">
+      <button id="logoutBtn" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg hidden">Logout</button>
+    </div>
+  </aside>
+
+  <!-- Main Section -->
+  <div class="flex-1 flex flex-col">
+    <header class="bg-white border-b px-4 md:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <button id="openSidebar" class="md:hidden inline-flex items-center justify-center w-10 h-10 rounded hover:bg-gray-100">☰</button>
+        <h1 class="text-xl font-bold text-gray-800">Dashboard</h1>
+      </div>
+      <div id="adminName" class="text-sm text-gray-600"></div>
+    </header>
+    <main id="app" class="flex-1 p-4 md:p-6"></main>
+  </div>
+
+  <!-- Mobile Drawer -->
+  <div id="drawer" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/50"></div>
+    <div class="absolute left-0 top-0 h-full w-72 bg-white border-r p-4">
+      <div class="flex items-center justify-between mb-4">
+        <div class="text-xl font-extrabold text-gray-800">Admin <span class="text-green-600">Panel</span></div>
+        <button id="closeDrawer" class="w-10 h-10 rounded hover:bg-gray-100">✕</button>
+      </div>
+      <nav id="sidebarMobile" class="space-y-2">
+        <button class="sidebar-link active" data-tab="dashboard">📊 Dashboard</button>
+        <button class="sidebar-link" data-tab="jobs">🧾 Job Management</button>
+        <button class="sidebar-link" data-tab="candidates">👥 Candidates</button>
+        <button class="sidebar-link" data-tab="settings">🔐 Change Password</button>
+      </nav>
+      <div class="pt-4">
+        <button id="logoutBtnMobile" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg hidden">Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp, getDoc, setDoc
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBjrhSmQXrgR9gfCKUTVC55wKsERSOb1eM",
+      authDomain: "greens-cdfa5.firebaseapp.com",
+      projectId: "greens-cdfa5",
+      storageBucket: "greens-cdfa5.firebasestorage.app",
+      messagingSenderId: "765001047543",
+      appId: "1:765001047543:web:62ce01d9eea5ac5f9322f2"
+    };
+
+    const appFB = initializeApp(firebaseConfig);
+    const auth = getAuth(appFB);
+    const db = getFirestore(appFB);
+    const ADMIN_DOC = doc(db, "settings", "admin");
+
+    let ADMIN_USERNAME = localStorage.getItem("ADMIN_USERNAME") || "admin";
+    let ADMIN_PASSWORD = localStorage.getItem("ADMIN_PASSWORD") || "password123";
+
+    const state = { isAuthReady:false,isAdminLoggedIn:false,currentTab:"dashboard",jobs:[],candidates:[],isEditingJob:null,isModalOpen:false,offerLetter:null };
+    const appEl=document.getElementById("app");
+    const logoutBtn=document.getElementById("logoutBtn");
+    const logoutBtnMobile=document.getElementById("logoutBtnMobile");
+    const adminNameEl=document.getElementById("adminName");
+    const CE=(t,c="",h="")=>{const e=document.createElement(t);if(c)e.className=c;e.innerHTML=h;return e;};
+    const toast=(m,e=false)=>{const n=CE("div",`fixed bottom-5 right-5 text-white px-4 py-2 rounded-lg z-50 ${e?'bg-red-600':'bg-green-600'} shadow-lg`,m);document.body.append(n);setTimeout(()=>n.remove(),2500);};
+    const fmt=(ts)=> ts?.toDate ? ts.toDate().toLocaleDateString() : "-";
+    const getCollectionPath=(c)=>`/artifacts/staff-hiring-portal/public/data/${c}`;
+
+    async function initFirebase(){
+      onAuthStateChanged(auth, async (user)=>{
+        if(!user) await signInAnonymously(auth);
+        const s=await getDoc(ADMIN_DOC);
+        if(s.exists()){const a=s.data();ADMIN_USERNAME=a.username;ADMIN_PASSWORD=a.password;}
+        else{await setDoc(ADMIN_DOC,{username:ADMIN_USERNAME,password:ADMIN_PASSWORD});}
+        setupListeners(); state.isAuthReady=true; render();
+      });
+    }
+
+    function loginAdmin(u,p){
+      if(u===ADMIN_USERNAME&&p===ADMIN_PASSWORD){
+        state.isAdminLoggedIn=true;
+        adminNameEl.textContent=`👋 ${u}`;
+        logoutBtn.classList.remove("hidden");
+        logoutBtnMobile.classList.remove("hidden");
+        toast("Login successful");
+      } else toast("Invalid credentials",true);
+      render();
+    }
+    logoutBtn.onclick=()=>{state.isAdminLoggedIn=false;adminNameEl.textContent="";logoutBtn.classList.add("hidden");logoutBtnMobile.classList.add("hidden");render();};
+    logoutBtnMobile.onclick=logoutBtn.onclick;
+
+    async function updateAdminPassword(oldPass,newUser,newPass){
+      if(oldPass!==ADMIN_PASSWORD) return toast("Old password incorrect!",true);
+      ADMIN_USERNAME=newUser; ADMIN_PASSWORD=newPass;
+      localStorage.setItem("ADMIN_USERNAME",newUser);
+      localStorage.setItem("ADMIN_PASSWORD",newPass);
+      await updateDoc(ADMIN_DOC,{username:newUser,password:newPass});
+      toast("Admin credentials updated!");
+    }
+
+    function setupListeners(){
+      onSnapshot(collection(db,getCollectionPath("jobs")),(snap)=>{state.jobs=snap.docs.map(d=>({id:d.id,...d.data()}));render();});
+      onSnapshot(collection(db,getCollectionPath("applications")),(snap)=>{state.candidates=snap.docs.map(d=>({id:d.id,...d.data()}));render();});
+    }
+
+    async function createJob(job){await addDoc(collection(db,getCollectionPath("jobs")),{...job,createdAt:serverTimestamp(),active:true});toast("Job added");}
+    async function updateJob(id,data){await updateDoc(doc(db,getCollectionPath("jobs"),id),data);state.isEditingJob=null;toast("Job updated");}
+    async function deleteJob(id){if(confirm("Delete job?")){await deleteDoc(doc(db,getCollectionPath("jobs"),id));toast("Deleted");}}
+    async function toggleJobActive(id,newStatus){await updateDoc(doc(db,getCollectionPath("jobs"),id),{active:newStatus});toast(`Job marked as ${newStatus?"Active":"Inactive"}`);}
+
+    async function updateCandidateStatus(id,status){await updateDoc(doc(db,getCollectionPath("applications"),id),{status,updatedAt:serverTimestamp()});toast(`Status → ${status}`);}
+    async function updateCandidateRemark(id,remark){await updateDoc(doc(db,getCollectionPath("applications"),id),{remark,updatedAt:serverTimestamp()});toast("Remark saved");}
+    async function deleteCandidate(id){if(confirm("Delete candidate?")){await deleteDoc(doc(db,getCollectionPath("applications"),id));toast("Candidate deleted");}}
+
+    function dashboardView(){
+      const totalJobs=state.jobs.length;
+      const activeJobs=state.jobs.filter(j=>j.active).length||0;
+      const inactiveJobs=state.jobs.filter(j=>!j.active).length||0;
+      const totalCands=state.candidates.length;
+      const pending=state.candidates.filter(c=>c.status==="Applied").length;
+      const offered=state.candidates.filter(c=>c.status==="Offered").length;
+      return CE("div","space-y-6",`
+        <div class='grid md:grid-cols-3 lg:grid-cols-6 gap-4'>
+          <div class='card bg-blue-500'><div>Total Jobs</div><div class='text-3xl font-bold mt-1'>${totalJobs}</div></div>
+          <div class='card bg-green-500'><div>Active Jobs</div><div class='text-3xl font-bold mt-1'>${activeJobs}</div></div>
+          <div class='card bg-gray-500'><div>Inactive Jobs</div><div class='text-3xl font-bold mt-1'>${inactiveJobs}</div></div>
+          <div class='card bg-yellow-500'><div>Candidates</div><div class='text-3xl font-bold mt-1'>${totalCands}</div></div>
+          <div class='card bg-red-500'><div>Pending</div><div class='text-3xl font-bold mt-1'>${pending}</div></div>
+          <div class='card bg-purple-500'><div>HR Offered</div><div class='text-3xl font-bold mt-1'>${offered}</div></div>
+        </div>`);
+    }
+
+    function jobForm(){
+      const e=state.isEditingJob;
+      const f=CE("form","bg-white p-6 rounded-xl shadow mb-6 max-w-4xl",
+        `<h3 class='text-xl font-bold text-green-700 mb-4'>${e?'Edit Job':'Create New Job'}</h3>
+         <div class='grid md:grid-cols-2 gap-4'>
+           <input id='title' value='${e?.title||''}' placeholder='Job Title' class='border p-3 rounded'>
+           <input id='dept' value='${e?.department||''}' placeholder='Department' class='border p-3 rounded'>
+           <select id='type' class='border p-3 rounded'><option ${e?.jobType==='Permanent'?'selected':''}>Permanent</option><option ${e?.jobType==='Part-time'?'selected':''}>Part-time</option></select>
+           <textarea id='desc' rows='3' placeholder='Description' class='border p-3 rounded md:col-span-2'>${e?.description||''}</textarea>
+         </div>
+         <div class='pt-4 flex gap-3 justify-end'>
+           <button class='px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700'>${e?'Update':'Publish'}</button>
+           ${e?`<button id='cancel' type='button' class='px-6 py-2 bg-gray-200 rounded-lg hover:bg-gray-300'>Cancel</button>`:''}
+         </div>`);
+      f.onsubmit=(ev)=>{ev.preventDefault();const job={title:f.querySelector("#title").value,department:f.querySelector("#dept").value,jobType:f.querySelector("#type").value,description:f.querySelector("#desc").value,active:true};if(e)updateJob(e.id,job);else createJob(job);};
+      if(e)f.querySelector("#cancel").onclick=()=>{state.isEditingJob=null;render();};
+      return f;
+    }
+
+    function jobsView(){
+      const wrap=CE("div","");wrap.append(jobForm());
+      const t=CE("table","min-w-full bg-white rounded-xl shadow overflow-hidden",`
+        <thead class='bg-green-50'><tr>
+          <th class='p-3 text-left text-sm'>Title</th>
+          <th class='p-3 text-left text-sm'>Dept</th>
+          <th class='p-3 text-left text-sm'>Type</th>
+          <th class='p-3 text-left text-sm'>Status</th>
+          <th class='p-3 text-left text-sm'>Posted</th>
+          <th class='p-3 text-left text-sm'>Actions</th>
+        </tr></thead>
+        <tbody>
+          ${state.jobs.map(j=>`
+            <tr class='border-t'>
+              <td class='p-3'>${j.title}</td>
+              <td class='p-3'>${j.department}</td>
+              <td class='p-3'>${j.jobType}</td>
+              <td class='p-3'>
+                <button data-toggle='${j.id}' class='px-3 py-1 rounded text-white ${j.active?'bg-green-600':'bg-gray-500'}'>
+                  ${j.active?'Active':'Inactive'}
+                </button>
+              </td>
+              <td class='p-3'>${fmt(j.createdAt)}</td>
+              <td class='p-3 space-x-3'>
+                <button data-edit='${j.id}' class='text-blue-600 hover:underline'>Edit</button>
+                <button data-del='${j.id}' class='text-red-600 hover:underline'>Delete</button>
+              </td>
+            </tr>`).join("")}
+        </tbody>`);
+      t.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{state.isEditingJob=state.jobs.find(x=>x.id===b.dataset.edit);render();});
+      t.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>deleteJob(b.dataset.del));
+      t.querySelectorAll("[data-toggle]").forEach(b=>b.onclick=()=>{const id=b.dataset.toggle;const job=state.jobs.find(x=>x.id===id);toggleJobActive(id,!job.active);});
+      wrap.append(t);return wrap;
+    }
+
+    function candidatesView(){
+      const wrap=CE("div","space-y-4");
+      const search=CE("input","w-full p-3 border rounded");search.placeholder="🔍 Search by name, email, job, status";
+      let q="";search.oninput=(e)=>{q=e.target.value.toLowerCase();render();};
+      wrap.append(search);
+      const rows=state.candidates.filter(c=>{const s=q||"";return (c.name||"").toLowerCase().includes(s)||(c.email||"").toLowerCase().includes(s)||(c.jobTitle||"").toLowerCase().includes(s)||(c.status||"").toLowerCase().includes(s);});
+      const t=CE("table","min-w-full bg-white rounded-xl shadow overflow-hidden",`
+        <thead class='bg-green-50'><tr>
+          <th class='p-3 text-left text-sm'>Name</th>
+          <th class='p-3 text-left text-sm'>Email</th>
+          <th class='p-3 text-left text-sm'>Mobile</th>
+          <th class='p-3 text-left text-sm'>Job</th>
+          <th class='p-3 text-left text-sm'>CV</th>
+          <th class='p-3 text-left text-sm'>Status</th>
+          <th class='p-3 text-left text-sm'>Remarks</th>
+          <th class='p-3 text-left text-sm'>Action</th>
+        </tr></thead>
+        <tbody>
+        ${rows.map(c=>{const locked=c.status==="Offered";return`
+          <tr class='border-t align-top'>
+            <td class='p-3'><div class='flex items-center gap-2'><span>${c.name||'-'}</span>${locked?'<span class="lock-badge">🔒</span>':''}</div></td>
+            <td class='p-3'>${c.email||'-'}</td>
+            <td class='p-3'>${c.mobile||'-'}</td>
+            <td class='p-3'>${c.jobTitle||'-'}</td>
+            <td class='p-3'>${c.resumeUrl?`<a href="${c.resumeUrl}" target="_blank" class="text-blue-600 underline">View</a>`:'-'}</td>
+            <td class='p-3'><select data-id='${c.id}' class='border p-2 rounded ${locked?'bg-gray-100 text-gray-500':''}' ${locked?'disabled':''}>
+              <option ${c.status==='Applied'?'selected':''}>Applied</option>
+              <option ${c.status==='Interviewing'?'selected':''}>Interviewing</option>
+              <option ${c.status==='Offered'?'selected':''}>Offered</option>
+              <option ${c.status==='Rejected'?'selected':''}>Rejected</option></select></td>
+            <td class='p-3'><textarea rows='1' class='border rounded p-2 w-48' data-remark='${c.id}'>${c.remark||''}</textarea></td>
+            <td class='p-3 space-x-2'><button data-save='${c.id}' class='text-green-600 hover:underline'>💾</button><button data-del='${c.id}' class='text-red-600 hover:underline'>🗑</button></td>
+          </tr>`;}).join("")}</tbody>`);
+      t.querySelectorAll("select[data-id]").forEach(sel=>sel.onchange=()=>updateCandidateStatus(sel.dataset.id,sel.value));
+      t.querySelectorAll("button[data-del]").forEach(b=>b.onclick=()=>deleteCandidate(b.dataset.del));
+      t.querySelectorAll("button[data-save]").forEach(b=>b.onclick=()=>{const txt=t.querySelector(`textarea[data-remark='${b.dataset.save}']`);updateCandidateRemark(b.dataset.save,(txt?.value||"").trim());});
+      wrap.append(t);return wrap;
+    }
+
+    function passwordView(){
+      const f=CE("form","bg-white p-8 rounded-xl shadow max-w-md",
+        `<h3 class='text-2xl font-bold text-red-700 mb-4'>Change Admin Password</h3>
+         <input id='old' type='password' placeholder='Old Password' class='border p-3 rounded w-full mb-3'>
+         <input id='user' placeholder='New Username' class='border p-3 rounded w-full mb-3'>
+         <input id='new' type='password' placeholder='New Password' class='border p-3 rounded w-full mb-4'>
+         <button class='w-full bg-red-600 text-white p-3 rounded hover:bg-red-700'>Update</button>`);
+      f.onsubmit=(e)=>{e.preventDefault();updateAdminPassword(f.querySelector("#old").value,f.querySelector("#user").value,f.querySelector("#new").value);};
+      return f;
+    }
+
+    function loginView(){
+      const b=CE("div","flex items-center justify-center min-h-[70vh]");
+      const c=CE("div","bg-white p-8 rounded-xl shadow max-w-sm w-full",`
+        <h2 class='text-2xl font-bold text-green-700 mb-6 text-center'>Admin Login</h2>
+        <input id='lu' placeholder='Username' class='border p-3 rounded w-full mb-3'>
+        <input id='lp' type='password' placeholder='Password' class='border p-3 rounded w-full mb-4'>
+        <button id='lb' class='w-full bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg'>Login</button>`);
+      c.querySelector("#lb").onclick=()=>loginAdmin(c.querySelector("#lu").value.trim(),c.querySelector("#lp").value.trim());
+      b.append(c);return b;
+    }
+
+    function render(){
+      appEl.innerHTML="";
+      document.querySelectorAll("#sidebar .sidebar-link,#sidebarMobile .sidebar-link").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===state.currentTab));
+      if(!state.isAuthReady)return appEl.append(CE("div","p-10 text-gray-500","Connecting..."));
+      if(!state.isAdminLoggedIn)return appEl.append(loginView());
+      if(state.currentTab==="dashboard")appEl.append(dashboardView());
+      if(state.currentTab==="jobs")appEl.append(jobsView());
+      if(state.currentTab==="candidates")appEl.append(candidatesView());
+      if(state.currentTab==="settings")appEl.append(passwordView());
+    }
+
+    function bindSidebar(root){document.querySelectorAll(`${root} .sidebar-link`).forEach(b=>b.onclick=()=>{state.currentTab=b.dataset.tab;if(root==="#sidebarMobile")closeDrawer();render();});}
+    bindSidebar("#sidebar");bindSidebar("#sidebarMobile");
+    const drawer=document.getElementById("drawer"),openBtn=document.getElementById("openSidebar"),closeBtn=document.getElementById("closeDrawer");
+    function openDrawer(){drawer.classList.remove("hidden");}function closeDrawer(){drawer.classList.add("hidden");}
+    openBtn.onclick=openDrawer;closeBtn.onclick=closeDrawer;drawer.onclick=(e)=>{if(e.target===drawer)closeDrawer();};
+
+    window.onload=initFirebase;
+  </script>
+</body>
+</html>

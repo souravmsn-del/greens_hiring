@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Careers - Job Openings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+  </style>
+</head>
+<body>
+  <header class="bg-green-600 text-white py-4 shadow">
+    <div class="max-w-6xl mx-auto px-4 flex justify-between items-center">
+      <h1 class="text-2xl font-bold">Greenshyper Market <span class="text-yellow-300"></span> Careers</h1>
+      <nav class="space-x-4 text-sm">
+        <a href="#" class="hover:text-yellow-300">Home</a>
+        <a href="#" class="hover:text-yellow-300">About</a>
+        <a href="#" class="hover:text-yellow-300">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app" class="min-h-screen py-10 px-4 md:px-10"></main>
+
+  <footer class="bg-gray-900 text-gray-300 text-center py-4 mt-10">
+    <p class="text-sm">&copy; 2025 Best Store. All rights reserved.</p>
+  </footer>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getFirestore, collection, onSnapshot, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBjrhSmQXrgR9gfCKUTVC55wKsERSOb1eM",
+      authDomain: "greens-cdfa5.firebaseapp.com",
+      projectId: "greens-cdfa5",
+      storageBucket: "greens-cdfa5.firebasestorage.app",
+      messagingSenderId: "765001047543",
+      appId: "1:765001047543:web:62ce01d9eea5ac5f9322f2"
+    };
+
+    const appFB = initializeApp(firebaseConfig);
+    const db = getFirestore(appFB);
+    const JOBS_PATH = "/artifacts/staff-hiring-portal/public/data/jobs";
+    const APPLICATIONS_PATH = "/artifacts/staff-hiring-portal/public/data/applications";
+
+    const state = { jobs: [], isLoading: true, view: "jobs", selectedJob: null };
+
+    const appEl = document.getElementById("app");
+    const createElement = (tag, classes = "", html = "") => {
+      const el = document.createElement(tag);
+      if (classes) el.className = classes;
+      if (html) el.innerHTML = html;
+      return el;
+    };
+
+    function renderJobCard(job) {
+      const card = createElement("div", "bg-white p-6 rounded-xl shadow hover:shadow-lg transition duration-200 flex flex-col justify-between");
+      card.innerHTML = `
+        <div>
+          <h3 class="text-xl font-bold text-gray-800 mb-2">${job.title}</h3>
+          <p class="text-gray-600 text-sm mb-1"><strong>Department:</strong> ${job.department}</p>
+          <p class="text-gray-600 text-sm mb-3"><strong>Type:</strong> ${job.jobType}</p>
+          <p class="text-gray-500 text-sm mb-4">${job.description || ""}</p>
+        </div>
+        <button data-id="${job.id}" class="applyBtn bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg mt-4">Apply Now</button>
+      `;
+      return card;
+    }
+
+    function renderJobsPage() {
+      const container = createElement("div", "max-w-7xl mx-auto p-6");
+      const heading = createElement("h2", "text-4xl font-extrabold text-gray-800 mb-6 text-center", "Join Our Team");
+      const grid = createElement("div", "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6");
+
+      const activeJobs = state.jobs.filter(j => j.active !== false);
+
+      if (activeJobs.length === 0)
+        grid.append(createElement("p", "col-span-full text-center text-gray-500 py-16", state.isLoading ? "Loading jobs..." : "No open positions currently available."));
+      else
+        activeJobs.forEach(j => grid.append(renderJobCard(j)));
+
+      container.append(heading, grid);
+      return container;
+    }
+
+    function renderApplyForm(job) {
+      const form = createElement("form", "max-w-lg mx-auto bg-white p-6 rounded-xl shadow space-y-4");
+      form.innerHTML = `
+        <h2 class="text-2xl font-bold text-green-700 mb-2">Apply for ${job.title}</h2>
+        <input type="text" id="name" placeholder="Full Name" class="border p-3 rounded w-full" required>
+        <input type="email" id="email" placeholder="Email Address" class="border p-3 rounded w-full" required>
+        <input type="text" id="mobile" placeholder="Mobile Number" class="border p-3 rounded w-full" required>
+        <input type="url" id="cv" placeholder="Google Drive CV Link" class="border p-3 rounded w-full" required>
+        <button class="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded">Submit Application</button>
+        <button type="button" id="back" class="w-full bg-gray-200 hover:bg-gray-300 p-3 rounded">Back</button>
+      `;
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        const data = {
+          name: form.querySelector("#name").value.trim(),
+          email: form.querySelector("#email").value.trim(),
+          mobile: form.querySelector("#mobile").value.trim(),
+          resumeUrl: form.querySelector("#cv").value.trim(),
+          jobId: job.id,
+          jobTitle: job.title,
+          status: "Applied",
+          createdAt: serverTimestamp()
+        };
+        await addDoc(collection(db, APPLICATIONS_PATH), data);
+        alert("Application submitted successfully!");
+        state.view = "jobs";
+        render();
+      };
+      form.querySelector("#back").onclick = () => {
+        state.view = "jobs";
+        render();
+      };
+      return form;
+    }
+
+    function render() {
+      appEl.innerHTML = "";
+      if (state.view === "apply" && state.selectedJob) {
+        appEl.append(renderApplyForm(state.selectedJob));
+      } else {
+        appEl.append(renderJobsPage());
+        document.querySelectorAll(".applyBtn").forEach(btn => {
+          btn.onclick = () => {
+            const job = state.jobs.find(j => j.id === btn.dataset.id);
+            state.selectedJob = job;
+            state.view = "apply";
+            render();
+          };
+        });
+      }
+    }
+
+    function setupListeners() {
+      onSnapshot(collection(db, JOBS_PATH), (snap) => {
+        state.jobs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        state.isLoading = false;
+        render();
+      });
+    }
+
+    setupListeners();
+  </script>
+</body>
+</html>
